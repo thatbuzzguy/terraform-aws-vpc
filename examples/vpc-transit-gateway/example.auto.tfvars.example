@@ -1,0 +1,24 @@
+aws_region                     = "us-west-2"
+environment                    = "dev"
+vpc_name                       = "tgw-example-vpc"
+vpc_cidr                       = "10.1.0.0/16"
+
+# Pre-existing resources. Copy this file to example.auto.tfvars and fill in the
+# real IDs; the data sources in transit_gateway.tf will verify them at plan time.
+transit_gateway_id             = "tgw-0123456789abcdef0"
+transit_gateway_route_table_id = "tgw-rt-0123456789abcdef0"
+
+enable_tgw_association         = true
+enable_tgw_propagation         = true
+default_route_to_tgw           = true
+
+# IPv6. Leave ipv6_cidr null to have AWS assign a /56, or set an explicit one.
+# enable_ipv6 = true
+# ipv6_cidr   = "2600:1f1c:1234:5600::/56"   # optional, must be from the Amazon pool / your IPAM scope
+# assign_ipv6_address_on_creation = true
+
+# DNS forwarding to the upstream resolver.
+# enable_dns_forwarding     = true
+# resolver_query_domains    = ["corp.example.internal"]
+# resolver_endpoint_arn     = null            # existing inbound/outbound endpoint ARN, or null to create one
+# resolver_egress_cidr_blocks = ["10.9.0.0/16"]

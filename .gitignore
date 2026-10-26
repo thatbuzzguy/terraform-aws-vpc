@@ -1,0 +1,16 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Variable files may contain secrets (committed templates are allowed)
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# CLI / editor
+terraform.tfstate.d/
+terraform.tfplan
+.DS_Store
