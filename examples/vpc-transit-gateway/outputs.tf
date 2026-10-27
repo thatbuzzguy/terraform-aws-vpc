@@ -30,12 +30,12 @@ output "intra_route_table_ids" {
 
 output "transit_gateway_id" {
   description = "ID of the pre-existing transit gateway."
-  value       = data.aws_ec2_transit_gateway.this.id
+  value       = local.tgw_id
 }
 
 output "transit_gateway_route_table_id" {
   description = "ID of the pre-existing transit gateway route table."
-  value       = data.aws_ec2_transit_gateway_route_table.this.id
+  value       = local.tgw_route_table_id
 }
 
 output "transit_gateway_attachment_id" {

@@ -95,14 +95,50 @@ variable "resolver_egress_cidr_blocks" {
   default     = ["0.0.0.0/0"]
 }
 
+# Static inputs for resources this account cannot read. An ID or an ARN is accepted
+# and transit_gateway.tf reduces the ARN to the ID the resources take, because
+# `aws ec2 get-transit-gateway-default-route-table-id` prints an ARN.
 variable "transit_gateway_id" {
-  description = "ID of the pre-existing transit gateway (tgw-xxxxxxxxxxxxxxxxxxx)."
+  description = "Transit gateway ID (tgw-xxxxxxxxxxxxxxxxxxx), or its ARN when it is owned by another account."
   type        = string
+
+  validation {
+    condition     = can(regex("^(tgw-[0-9a-f]+|arn:aws[a-z-]*:ec2:[a-z0-9-]+:[0-9]{12}:transit-gateway/tgw-[0-9a-f]+)$", var.transit_gateway_id))
+    error_message = "transit_gateway_id must be a transit gateway ID or its ARN, not an attachment ID."
+  }
 }
 
 variable "transit_gateway_route_table_id" {
-  description = "ID of the pre-existing transit gateway route table to associate with and propagate to (tgw-rt-xxxxxxxxxxxxxxxxxxx). Propagation requires the TGW owner to allow it."
+  description = "Transit gateway route table ID (tgw-rt-xxxxxxxxxxxxxxxxxxx), or its ARN when it is owned by another account. Propagation requires the TGW owner to allow it."
   type        = string
+
+  validation {
+    condition     = can(regex("^(tgw-rt-[0-9a-f]+|arn:aws[a-z-]*:ec2:[a-z0-9-]+:[0-9]{12}:transit-gateway-route-table/tgw-rt-[0-9a-f]+)$", var.transit_gateway_route_table_id))
+    error_message = "transit_gateway_route_table_id must be a route table ID or its ARN."
+  }
+}
+
+# Set when the transit gateway and route table are owned by another account and
+# shared into this one through RAM: the data sources cannot read them there, so the
+# static inputs above are used as given. The share still has to be accepted here
+# (automatic inside an AWS Organization, otherwise in the RAM console), because AWS
+# checks it when the association is created.
+variable "use_static_tgw_ids" {
+  description = "Skip the data source reads and use transit_gateway_id / transit_gateway_route_table_id exactly as supplied. Set for a transit gateway shared into this account."
+  type        = bool
+  default     = false
+}
+
+variable "tgw_region" {
+  description = "Region the transit gateway is in, when it differs from `aws_region`. Only used by the data source reads, since a VPC attachment cannot cross regions."
+  type        = string
+  default     = null
+}
+
+variable "replace_existing_association" {
+  description = "Drop the attachment's current route table association before creating this one. Needed when the TGW auto-associates new attachments with its default route table, which is the usual case for both owned and shared TGWs."
+  type        = bool
+  default     = true
 }
 
 variable "enable_tgw_association" {

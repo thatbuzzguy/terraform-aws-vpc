@@ -71,8 +71,58 @@ terraform plan
 terraform apply
 ```
 
-`transit_gateway_id` and `transit_gateway_route_table_id` have no defaults; the
-data sources fail the plan if the IDs do not exist, which is a useful sanity check.
+`transit_gateway_id` and `transit_gateway_route_table_id` have no defaults. When this
+account owns the transit gateway, the data sources verify the values against the API at
+plan time, which is a useful sanity check. When it does not, set `use_static_tgw_ids`
+and the values are treated as static inputs.
+
+## Transit gateway owned by another account (RAM share)
+
+Data sources are reads made with the credentials Terraform is using, and a route table
+owned by another account is never found: `DescribeTransitGatewayRouteTables` does not
+return tables shared into this account, even after the share is accepted. That is the
+
+```
+Error: No matching EC2 Transit Gateway Route Table found.
+  with data.aws_ec2_transit_gateway_route_table.this
+```
+
+error. Set `use_static_tgw_ids = true` and the reads are skipped, so the plan accepts
+the values on trust. IDs or ARNs both work - an ARN is reduced to the ID the resources
+take, which matters because `aws ec2 get-transit-gateway-default-route-table-id` prints
+an ARN.
+
+```bash
+terraform plan \
+  -var 'use_static_tgw_ids=true' \
+  -var 'transit_gateway_id=arn:aws:ec2:us-east-1:123456789012:transit-gateway/tgw-0123456789abcdef0' \
+  -var 'transit_gateway_route_table_id=arn:aws:ec2:us-east-1:123456789012:transit-gateway-route-table/tgw-rt-0123456789abcdef0'
+```
+
+The upstream IDs cannot be validated from this side without a role in the network
+account, so the checks that remain are ones AWS enforces at apply time:
+
+1. The network account has shared the route table (and the TGW) with this account.
+2. The share is accepted here, which is automatic inside an AWS Organization and
+   otherwise needs the RAM console. There is no partial apply that creates this
+   request: the share lives in the owner account and acceptance happens in this one.
+3. The route table already exists in the owner account. Terraform run from the spoke
+   account cannot create it.
+4. This account's permissions allow `ec2:CreateTransitGatewayRouteTableAssociation`
+   and `...Propagation` on the shared table. If the network team keeps propagation on
+   their side, set `enable_tgw_propagation = false` and ask for a static route for the
+   VPC CIDR.
+
+Within one apply Terraform orders attachment → association → propagation correctly, so
+no `-target` is needed; `replace_existing_association` handles the default route table
+the new attachment lands on.
+
+To confirm the read really is impossible, this data source returns nothing in a spoke
+account:
+
+```hcl
+data "aws_ec2_transit_gateway_route_tables" "check" {}
+```
 
 ## Things to watch
 

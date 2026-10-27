@@ -4,13 +4,29 @@ vpc_name                       = "tgw-example-vpc"
 vpc_cidr                       = "10.1.0.0/16"
 
 # Pre-existing resources. Copy this file to example.auto.tfvars and fill in the
-# real IDs; the data sources in transit_gateway.tf will verify them at plan time.
+# real IDs; the data sources in transit_gateway.tf verify them at plan time when this
+# account owns them.
 transit_gateway_id             = "tgw-0123456789abcdef0"
 transit_gateway_route_table_id = "tgw-rt-0123456789abcdef0"
+
+# When the transit gateway and route table are owned by another account and shared
+# into this one through RAM, this account cannot read them, so the values below are
+# used as given. Accept the share first (automatic inside an AWS Organization,
+# otherwise in the RAM console). IDs or ARNs both work; ARNs are reduced to the ID.
+# use_static_tgw_ids               = true
+# transit_gateway_id               = "arn:aws:ec2:us-east-1:123456789012:transit-gateway/tgw-0123456789abcdef0"
+# transit_gateway_route_table_id   = "arn:aws:ec2:us-east-1:123456789012:transit-gateway-route-table/tgw-rt-0123456789abcdef0"
 
 enable_tgw_association         = true
 enable_tgw_propagation         = true
 default_route_to_tgw           = true
+
+# Only used by the data source reads, so it does not matter when static IDs are set.
+# tgw_region = "us-east-1"
+
+# The attachment is auto-associated with the TGW default route table, so this has
+# to replace that association; leave it on unless something else owns associations.
+# replace_existing_association = true
 
 # IPv6. Leave ipv6_cidr null to have AWS assign a /56, or set an explicit one.
 # enable_ipv6 = true

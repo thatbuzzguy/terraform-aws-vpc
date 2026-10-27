@@ -16,7 +16,9 @@ locals {
     local.create_resolver_endpoint && var.create_resolver_security_group ? [aws_security_group.resolver[0].id] : [],
   )
 
-  resolver_endpoint_id = coalesce(var.resolver_endpoint_arn, try(aws_route53_resolver_endpoint.outbound[0].id, null))
+  # coalesce() fails when both are null, which is the default when forwarding is off,
+  # so try() is used to keep this null instead of erroring at plan time.
+  resolver_endpoint_id = try(var.resolver_endpoint_arn, aws_route53_resolver_endpoint.outbound[0].id, null)
 }
 
 check "dns_forwarding_config" {
