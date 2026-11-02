@@ -1,0 +1,77 @@
+aws_region  = "us-west-2"
+environment = "dev"
+vpc_name    = "subnets-by-az-vpc"
+vpc_cidr    = "10.2.0.0/16"
+
+# Private VLANs: one entry per subnet, with the name, the CIDR, and the AZ. Any number of
+# entries in any order, but the position of an entry decides which AZ it lands in.
+private_subnets = [
+  { name = "app-2a", cidr = "10.2.1.0/24", az = "us-west-2a" },
+  { name = "app-2b", cidr = "10.2.2.0/24", az = "us-west-2b" },
+  { name = "cache-2c", cidr = "10.2.3.0/24", az = "us-west-2c" },
+]
+
+# Optional public tier. It has to agree with the private tier position by position, so
+# position 0 is us-west-2a and position 1 is us-west-2b; stopping at position 1 means there
+# is no public subnet in us-west-2c. Comment the whole list out for the private-only default.
+public_subnets = [
+  { name = "edge-2a", cidr = "10.2.101.0/24", az = "us-west-2a" },
+  { name = "edge-2b", cidr = "10.2.102.0/24", az = "us-west-2b" },
+]
+
+# A NAT gateway has to live in a public subnet, so it is off for a private-only VPC. With
+# the public tier above it can be turned on.
+enable_nat_gateway = true
+single_nat_gateway = true
+# one_nat_gateway_per_az = true   # needs the public tier to be as long as the private tier
+# create_multiple_public_route_tables = true
+
+# Endpoints for ECS. Fargate in a private subnet needs ecr.api, ecr.dkr, logs, and the s3
+# gateway endpoint for image layers; ecs, ecs-agent, and ecs-telemetry are what EC2 launch
+# type and Service Connect use. Drop any name your region does not offer.
+enable_endpoints = true
+endpoints = [
+  "ecs",
+  "ecs-agent",
+  "ecs-telemetry",
+  "ecr.api",
+  "ecr.dkr",
+  "logs",
+  "s3",
+]
+gateway_endpoints = ["s3"]
+
+# Interface endpoint ENIs go in the private subnets by default. Add the public subnets here
+# if tasks run there too, and existing security groups if the endpoints should use them.
+# endpoint_subnets = null
+# endpoint_route_tables = null
+# endpoint_private_dns_enabled = true
+# create_endpoint_security_group = true
+# endpoint_security_group_ids = []
+
+# VPC flow log, on by default. One log for the whole VPC, so the record's interface field is
+# what identifies the VLAN a flow belonged to.
+create_flow_log                  = true
+flow_log_destination_type        = "cloud-watch-logs"   # "s3" needs flow_log_destination as a bucket ARN
+flow_log_traffic_type            = "ALL"                # "REJECT" shows a task reaching for a service with no endpoint
+flow_log_max_aggregation_interval = 600
+flow_log_retention_in_days       = 90
+# create_flow_log_log_group = false
+# flow_log_destination = "arn:aws:logs:us-west-2:335002812630:log-group:/aws/flow-log/shared"
+# create_flow_log_iam_role = false
+# flow_log_iam_role_arn = "arn:aws:iam::335002812630:role/vpc-flow-logs"
+
+# Optional transit gateway attachment, off by default. Turning it on makes the TGW the default
+# path out of the private VLANs, so `enable_nat_gateway` has to be off while
+# `default_route_to_tgw` is on.
+# enable_transit_gateway = true
+# transit_gateway_id = "tgw-0123456789abcdef0"
+# transit_gateway_route_table_id = "tgw-rt-0123456789abcdef0"
+# use_static_tgw_ids = true     # required for a TGW shared from another account
+# tgw_region = "us-west-2"
+# transit_gateway_subnets = null   # defaults to the private tier
+# tgw_dns_support = true
+# replace_existing_association = true
+# enable_tgw_association = true
+# enable_tgw_propagation = true    # needs the TGW owner to allow propagation
+# default_route_to_tgw = true

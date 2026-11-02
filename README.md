@@ -8,6 +8,7 @@ its own `.terraform.lock.hcl`.
 | --- | --- |
 | `examples/vpc-public-private` | Public + private VPC, single NAT gateway, gateway endpoints, flow logs |
 | `examples/vpc-transit-gateway` | Private-only (intra) VPC connected to a pre-existing transit gateway |
+| `examples/vpc-subnets-by-az` | Private subnets declared one by one (name, CIDR, AZ), optional public tier, optional VPC endpoints for ECS, transit gateway attachment, and flow logs |
 
 ## Running an example
 
