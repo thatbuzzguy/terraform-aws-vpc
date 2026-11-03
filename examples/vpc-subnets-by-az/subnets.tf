@@ -19,7 +19,8 @@ locals {
   ]
 
   # Each entry has to sit at the position its own az implies. Two subnets in the same AZ is
-  # fine: that AZ then simply appears twice in azs.
+  # fine for the subnets: that AZ then simply appears twice in azs. The interface endpoints get
+  # one subnet per AZ, so they use the first entry in each AZ, see endpoints.tf.
   private_az_ok = [for i, s in var.private_subnets : s.az == local.azs[i]]
   public_az_ok  = [for i, s in var.public_subnets : s.az == local.azs[i]]
 

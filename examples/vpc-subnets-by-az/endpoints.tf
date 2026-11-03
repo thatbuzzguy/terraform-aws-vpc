@@ -6,7 +6,20 @@ locals {
 
   # Interface endpoints need ENIs in subnets; gateway endpoints only write a route onto a
   # route table, so they need neither subnets nor a security group.
-  endpoint_subnets      = coalesce(var.endpoint_subnets, module.vpc.private_subnets)
+  #
+  # An interface endpoint takes one subnet per AZ, so the private tier cannot be passed through
+  # as it is when it has two subnets in the same AZ: CreateVpcEndpoint fails at apply with
+  # DuplicateSubnetsInSameZone. The default is the first subnet in each AZ instead, which still
+  # serves that whole AZ, because a flow from any subnet in the VPC resolves to the endpoint ENI.
+  # Position i of module.vpc.private_subnets is subnet i, so position carries the AZ.
+  default_endpoint_subnets = [
+    for i, s in var.private_subnets : module.vpc.private_subnets[i]
+    if index([for x in var.private_subnets : x.az], s.az) == i
+  ]
+
+  # A list supplied here is used as it is: Terraform does not know which AZ a subnet ID is in at
+  # plan time, so it has to hold at most one subnet per AZ.
+  endpoint_subnets      = coalesce(var.endpoint_subnets, local.default_endpoint_subnets)
   endpoint_route_tables = coalesce(var.endpoint_route_tables, module.vpc.private_route_table_ids)
 
   # Gateway services write a prefix-list route onto a route table; everything else is an
@@ -38,8 +51,16 @@ check "endpoint_config" {
   }
 
   assert {
-    condition     = !var.enable_endpoints || length(coalesce(var.endpoint_subnets, [])) > 0 || length(var.private_subnets) > 0
+    condition     = !var.enable_endpoints || length(coalesce(var.endpoint_subnets, var.private_subnets)) > 0
     error_message = "Interface endpoints need at least one subnet in this VPC to put an ENI in; endpoint_subnets is empty and there are no private subnets to fall back to."
+  }
+
+  # Only the supplied list can be checked, and only as an upper bound: one subnet per AZ means
+  # the list cannot be longer than the number of distinct AZs. Two entries in the same AZ cannot
+  # be seen from IDs at plan time, so that one is left to AWS.
+  assert {
+    condition     = !var.enable_endpoints || var.endpoint_subnets == null || length(var.endpoint_subnets) <= length(distinct(local.azs))
+    error_message = "Interface endpoints take one subnet per availability zone, so endpoint_subnets cannot have more entries than this VPC has distinct AZs. Without endpoint_subnets the default already picks one per AZ, which is what lets the private tier have several subnets in the same AZ."
   }
 
   assert {

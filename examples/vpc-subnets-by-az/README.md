@@ -28,7 +28,9 @@ position its own `az` implies.
 In practice:
 
 - Any number of entries in any AZs, in the order you want them.
-- Several subnets in the same AZ is fine; that AZ just appears twice in the derived order.
+- Several subnets in the same AZ is fine for the subnets; that AZ just appears twice in the
+  derived order. The interface endpoints get one subnet per AZ, so they use the first entry in
+  each AZ, see "Endpoints for ECS".
 - A tier with fewer entries than another tier can only stop early, it cannot skip a
   position. So the public tier has to start at the same first AZ as the private tier:
 
@@ -120,8 +122,8 @@ specific.
 
 `endpoints.tf` turns each service name into an endpoint, using the `vpc-endpoints`
 sub-module. Gateway services go on route tables, everything else is an interface endpoint
-with an ENI in `endpoint_subnets` (the private tier by default, since that is where the tasks
-run).
+with an ENI in `endpoint_subnets` (the first private subnet in each AZ by default, since that
+is where the tasks run).
 
 | Service | Why ECS needs it |
 | --- | --- |
@@ -134,6 +136,21 @@ run).
 Add `secretsmanager`, `kms`, or `sqs` to the list when the task uses them; a task with no
 internet path only reaches the services it has an endpoint for.
 
+An interface endpoint takes one subnet per AZ, so `endpoint_subnets` cannot be the whole private
+tier when a tier has two subnets in the same AZ: `CreateVpcEndpoint` fails at apply with
+`DuplicateSubnetsInSameZone`. `endpoints.tf` defaults to the first subnet in each AZ instead,
+which is enough for the whole AZ because a flow from any subnet in the VPC resolves to the
+endpoint ENI:
+
+```hcl
+private_subnets = [
+  { name = "app-2a", cidr = "10.2.1.0/24", az = "us-west-2a" },   # first in 2a, gets the ENIs
+  { name = "web-2a", cidr = "10.2.4.0/24", az = "us-west-2a" },   # second in 2a, no ENI
+  { name = "app-2b", cidr = "10.2.2.0/24", az = "us-west-2b" },
+]
+# endpoint_subnets is app-2a and app-2b; tasks in web-2a still reach every endpoint.
+```
+
 Two things to know:
 
 - Service names are resolved by the `aws_vpc_endpoint_service` data source at plan time, so a
@@ -144,10 +161,15 @@ Two things to know:
   `ecs-t.<region>.amazonaws.com`, so private DNS and `enable_dns_support` both have to stay
   on. In a private-only VPC, DNS still works because resolution happens inside the VPC; there
   is no internet path, and none is needed.
+- A list given to `endpoint_subnets` is used as it is, because Terraform cannot tell which AZ a
+  subnet ID is in at plan time. The check reports a list with more entries than this VPC has
+  distinct AZs; two entries in the same AZ there is still only found at apply.
 
 Cost: interface endpoints are about `$0.01` per hour per endpoint ENI plus `$0.01` per GB
-processed. The default six interface endpoints in three subnets is roughly 18 ENIs, about
-`$130` a month, which is still less than a NAT gateway once tasks pull images. Gateway
+processed, and an endpoint has one ENI per AZ it is given a subnet in. The default six interface
+endpoints across three AZs is roughly 18 ENIs, about `$130` a month, which is still less than a
+NAT gateway once tasks pull images. A private tier with two subnets in the same AZ costs the
+same as the one-per-AZ default, because the second subnet in that AZ gets no ENI. Gateway
 endpoints are free. If you leave `enable_endpoints` false and enable NAT instead, you pay the
 NAT hourly plus processing and the endpoints go away.
 
@@ -193,11 +215,15 @@ terraform plan
 terraform apply
 ```
 
-The checks in `subnets.tf` and `endpoints.tf` run at plan time, so a bad AZ order or a NAT
-gateway with no public subnet is reported before anything is created.
+The checks in `subnets.tf` and `endpoints.tf` run at plan time, so a bad AZ order, an
+`endpoint_subnets` list longer than the number of distinct AZs, or a NAT gateway with no public
+subnet is reported before anything is created.
 
 ## Things to watch
 
+- Interface endpoints take one subnet per AZ, so only the first subnet in an AZ holds the ENIs.
+  The zonal DNS name for that AZ points at that ENI, and tasks in the other subnets of the AZ
+  reach it through the VPC's local route.
 - Interface endpoints cannot be created in subnets shared with you, only used from them.
 - With the attachment on, the TGW route table still needs a route back to `10.2.0.0/16`,
   otherwise traffic leaves the VPC and never comes back. If the network team owns that route,

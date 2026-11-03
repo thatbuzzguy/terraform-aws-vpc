@@ -41,8 +41,10 @@ endpoints = [
 ]
 gateway_endpoints = ["s3"]
 
-# Interface endpoint ENIs go in the private subnets by default. Add the public subnets here
-# if tasks run there too, and existing security groups if the endpoints should use them.
+# Interface endpoint ENIs go in the private subnets by default, one subnet per AZ, so the first
+# subnet in each AZ is the one that gets an ENI. Add the public subnets here if tasks run there
+# too, and existing security groups if the endpoints should use them; a list given here cannot
+# repeat an AZ.
 # endpoint_subnets = null
 # endpoint_route_tables = null
 # endpoint_private_dns_enabled = true

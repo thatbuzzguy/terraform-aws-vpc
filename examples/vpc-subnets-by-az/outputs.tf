@@ -115,7 +115,7 @@ output "endpoint_security_group_id" {
 }
 
 output "endpoint_subnets" {
-  description = "Subnets the interface endpoints put ENIs in, after the default is resolved."
+  description = "Subnets the interface endpoints put ENIs in, after the default is resolved: one per AZ, so a private subnet that is not the first in its AZ is not in this list."
   value       = local.endpoint_subnets
 }
 

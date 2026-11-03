@@ -117,7 +117,7 @@ variable "gateway_endpoints" {
 }
 
 variable "endpoint_subnets" {
-  description = "Subnets the interface endpoints put ENIs in. Defaults to the private subnets, which is where the ECS tasks run."
+  description = "Subnets the interface endpoints put ENIs in. One subnet per AZ only, so the default is the first private subnet in each AZ rather than the whole private tier, which is what lets a tier hold several subnets in the same AZ. A list given here is used as it is, so it cannot repeat an AZ."
   type        = list(string)
   default     = null
 }
