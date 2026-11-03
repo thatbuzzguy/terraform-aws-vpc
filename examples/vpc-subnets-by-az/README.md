@@ -113,6 +113,13 @@ The route count follows the module's private route tables: one with `single_nat_
 AZ with `one_nat_gateway_per_az`, one per subnet position otherwise. That count also decides how
 many endpoint policies apply, since one table per subnet is what lets each VLAN keep its own.
 
+The route is written per route table, and the module associates every private subnet with one of
+those tables, so `single_nat_gateway = false` is what gives several private subnets in the same AZ
+a route each. With `single_nat_gateway = true` the tier shares one table and the single route covers
+the whole tier. The count is recomputed from the module's formula rather than read from
+`private_route_table_ids`, because those IDs only exist at apply time and a count or `for_each`
+built from them cannot be planned.
+
 The attachment is roughly `$0.05` per hour plus `$0.01` per GB processed through it, on top of
 the endpoint costs. With the TGW as the default path, data to services outside this VPC goes
 that way; traffic to the endpoint services stays on the endpoint because its route is more

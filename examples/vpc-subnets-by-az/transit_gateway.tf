@@ -23,6 +23,11 @@ locals {
   # Private route tables are sized by the module's NAT gateway count, which applies even when
   # NAT is off: one table with single_nat_gateway, one per AZ with one_nat_gateway_per_az,
   # otherwise one per subnet position. The default route goes on each of them.
+  #
+  # This has to be the module's formula rather than length(module.vpc.private_route_table_ids):
+  # those IDs are created resources, so they are unknown at plan time and neither a count nor a
+  # for_each built from them can be planned. The formula is the same one the module uses
+  # (nat_gateway_count), so the counts agree by construction.
   tgw_route_tables = var.single_nat_gateway ? 1 : var.one_nat_gateway_per_az ? length(local.azs) : local.max_subnet_count
 }
 
@@ -78,9 +83,11 @@ resource "aws_ec2_transit_gateway_route_table_propagation" "this" {
   transit_gateway_route_table_id = local.tgw_route_table_id
 }
 
-# One default route per private route table. Without it a private VLAN only has its local
-# route, so nothing outside the VPC is reachable from it. Gateway endpoints are unaffected:
-# their prefix-list routes are more specific than 0.0.0.0/0 and win over the TGW route.
+# One default route per private route table, which is what covers every private subnet: the
+# module associates each subnet with one of these tables, so a subnet that is the second entry in
+# its AZ still gets the route. Without it a private VLAN only has its local route, so nothing
+# outside the VPC is reachable from it. Gateway endpoints are unaffected: their prefix-list routes
+# are more specific than 0.0.0.0/0 and win over the TGW route.
 resource "aws_route" "private_default_to_tgw" {
   count = var.enable_transit_gateway && var.default_route_to_tgw ? local.tgw_route_tables : 0
 

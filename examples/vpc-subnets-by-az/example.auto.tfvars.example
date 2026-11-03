@@ -77,3 +77,6 @@ flow_log_retention_in_days       = 90
 # enable_tgw_association = true
 # enable_tgw_propagation = true    # needs the TGW owner to allow propagation
 # default_route_to_tgw = true
+# single_nat_gateway = false   # one private route table per subnet, so each subnet gets its own
+#                              # default route; with true the tier shares one table and one route
+#                              # covers it
