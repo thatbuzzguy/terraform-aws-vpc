@@ -8,8 +8,12 @@ locals {
   tgw_id_input             = var.transit_gateway_id == null ? null : (can(regex("^arn:", var.transit_gateway_id)) ? basename(var.transit_gateway_id) : var.transit_gateway_id)
   tgw_route_table_id_input = var.transit_gateway_route_table_id == null ? null : (can(regex("^arn:", var.transit_gateway_route_table_id)) ? basename(var.transit_gateway_route_table_id) : var.transit_gateway_route_table_id)
 
+  # The route table is only touched by the association and the propagation, so with both off an
+  # attachment does not need one: the input can stay null and the read is skipped.
+  tgw_route_table_used = var.enable_tgw_association || var.enable_tgw_propagation
+
   tgw_id             = var.enable_transit_gateway && !var.use_static_tgw_ids ? data.aws_ec2_transit_gateway.this[0].id : local.tgw_id_input
-  tgw_route_table_id = var.enable_transit_gateway && !var.use_static_tgw_ids ? data.aws_ec2_transit_gateway_route_table.this[0].id : local.tgw_route_table_id_input
+  tgw_route_table_id = var.enable_transit_gateway && local.tgw_route_table_used && !var.use_static_tgw_ids ? data.aws_ec2_transit_gateway_route_table.this[0].id : local.tgw_route_table_id_input
 
   # The attachment takes subnets from this VPC; the private VLANs are the default because
   # that is where the workloads are. Attachments cannot cross regions, so `tgw_region` only
@@ -30,7 +34,7 @@ data "aws_ec2_transit_gateway" "this" {
 }
 
 data "aws_ec2_transit_gateway_route_table" "this" {
-  count = var.enable_transit_gateway && !var.use_static_tgw_ids ? 1 : 0
+  count = var.enable_transit_gateway && local.tgw_route_table_used && !var.use_static_tgw_ids ? 1 : 0
 
   region = var.tgw_region
   id     = local.tgw_route_table_id_input
