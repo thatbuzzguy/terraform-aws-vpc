@@ -152,14 +152,22 @@ variable "transit_gateway_id" {
   }
 }
 
-variable "transit_gateway_route_table_id" {
-  description = "Transit gateway route table ID (tgw-rt-xxxxxxxxxxxxxxxxxxx), or its ARN when it is owned by another account. Required when enable_transit_gateway is true. Propagation needs the TGW owner to allow it."
-  type        = string
-  default     = null
+# One entry per transit gateway route table the attachment is written to. Two entries is the
+# usual case: the hub's table for this VPC, and a second one that has to be written by hand
+# because it does not accept propagation from the spoke side.
+variable "transit_gateway_route_tables" {
+  description = "Transit gateway route tables, one object per table. `id` is the route table ID (tgw-rt-xxxxxxxxxxxxxxxxxxx), or its ARN when it is owned by another account. `associate` and `propagate` fall back to the flags below when an entry does not set them; `cidrs` are the destinations written as static routes on that table, which default to vpc_cidr for a table that is not propagated. At least one entry is required when enable_transit_gateway is true."
+  type = list(object({
+    id        = string
+    associate = optional(bool)
+    propagate = optional(bool)
+    cidrs     = optional(list(string))
+  }))
+  default = []
 
   validation {
-    condition     = var.transit_gateway_route_table_id == null || can(regex("^(tgw-rt-[0-9a-f]+|arn:aws[a-z-]*:ec2:[a-z0-9-]+:[0-9]{12}:transit-gateway-route-table/tgw-rt-[0-9a-f]+)$", var.transit_gateway_route_table_id))
-    error_message = "transit_gateway_route_table_id must be a route table ID or its ARN."
+    condition     = alltrue([for e in var.transit_gateway_route_tables : can(regex("^(tgw-rt-[0-9a-f]+|arn:aws[a-z-]*:ec2:[a-z0-9-]+:[0-9]{12}:transit-gateway-route-table/tgw-rt-[0-9a-f]+)$", e.id))])
+    error_message = "Every entry in transit_gateway_route_tables must be a route table ID or its ARN."
   }
 }
 
@@ -168,7 +176,7 @@ variable "transit_gateway_route_table_id" {
 # as given. The share still has to be accepted here (automatic inside an AWS Organization,
 # otherwise in the RAM console), because AWS checks it when the association is created.
 variable "use_static_tgw_ids" {
-  description = "Skip the data source reads and use transit_gateway_id / transit_gateway_route_table_id exactly as supplied. Set for a transit gateway shared into this account."
+  description = "Skip the data source reads and use transit_gateway_id and the ids in transit_gateway_route_tables exactly as supplied. Set for a transit gateway shared into this account."
   type        = bool
   default     = false
 }
@@ -198,13 +206,13 @@ variable "replace_existing_association" {
 }
 
 variable "enable_tgw_association" {
-  description = "Whether to associate the VPC attachment with the transit gateway route table."
+  description = "Whether to associate the VPC attachment with the transit gateway route tables. This is the default for an entry that does not set its own `associate`; a static route only forwards when the attachment is associated with the same table."
   type        = bool
   default     = true
 }
 
 variable "enable_tgw_propagation" {
-  description = "Whether to propagate the VPC attachment's routes (the VPC CIDR) to the transit gateway route table."
+  description = "Whether to propagate the VPC attachment's routes (the VPC CIDR) to the transit gateway route tables. This is the default for an entry that does not set its own `propagate`, and propagation needs the TGW owner to allow it. A table with propagate = false is where the routes are written by hand instead."
   type        = bool
   default     = true
 }

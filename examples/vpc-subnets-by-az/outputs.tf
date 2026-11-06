@@ -62,9 +62,16 @@ output "transit_gateway_id" {
   value       = local.tgw_id
 }
 
-output "transit_gateway_route_table_id" {
-  description = "ID of the pre-existing transit gateway route table (null when enable_transit_gateway is false)."
-  value       = local.tgw_route_table_id
+output "transit_gateway_route_tables" {
+  description = "Transit gateway route tables keyed by the ID or ARN as it was given, with what each entry does after the defaults are resolved (empty when enable_transit_gateway is false)."
+  value = {
+    for k, t in local.tgw_route_tables : k => {
+      id        = local.tgw_route_table_ids[k]
+      associate = t.associate
+      propagate = t.propagate
+      cidrs     = t.cidrs
+    }
+  }
 }
 
 output "transit_gateway_attachment_id" {
@@ -77,14 +84,29 @@ output "transit_gateway_subnets" {
   value       = local.tgw_subnets
 }
 
-output "transit_gateway_association_id" {
-  description = "Association ID between the attachment and the TGW route table."
-  value       = try(aws_ec2_transit_gateway_route_table_association.this[0].id, null)
+# Per table rather than one value, since there can be several route tables now. The IDs are the
+# ones the resources report, so they are null until the apply.
+output "transit_gateway_association_ids" {
+  description = "Association IDs, keyed by the route table entry as it was given."
+  value = {
+    for k in keys(local.tgw_route_tables) : k => try(aws_ec2_transit_gateway_route_table_association.this[k].id, null)
+  }
 }
 
-output "transit_gateway_propagation_id" {
-  description = "Propagation ID between the attachment and the TGW route table."
-  value       = try(aws_ec2_transit_gateway_route_table_propagation.this[0].id, null)
+output "transit_gateway_propagation_ids" {
+  description = "Propagation IDs, keyed by the route table entry as it was given."
+  value = {
+    for k in keys(local.tgw_route_tables) : k => try(aws_ec2_transit_gateway_route_table_propagation.this[k].id, null)
+  }
+}
+
+output "transit_gateway_routes" {
+  description = "Static routes written on the transit gateway route tables, keyed by table entry and then by destination CIDR."
+  value = {
+    for k, t in local.tgw_route_tables : k => {
+      for cidr in t.cidrs : cidr => try(aws_ec2_transit_gateway_route.this["${k}|${cidr}"].id, null)
+    }
+  }
 }
 
 output "transit_gateway_default_routes" {

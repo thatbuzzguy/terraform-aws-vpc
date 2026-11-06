@@ -72,21 +72,55 @@ because a NAT gateway has to sit in a public subnet.
 ## Optional transit gateway attachment
 
 Off by default, so the default plan is the isolated case. With `enable_transit_gateway = true`
-you get a VPC attachment using the private subnets, association and propagation against the
-pre-existing route table, and a `0.0.0.0/0` route on each private route table.
+you get a VPC attachment using the private subnets, one association and one propagation per route
+table entry, static routes for the destinations each entry names, and a `0.0.0.0/0` route on each
+private route table.
 
 | Variable | Purpose |
 | --- | --- |
 | `enable_transit_gateway` | Turn the attachment on (default `false`) |
 | `transit_gateway_id` | TGW ID or its ARN, required when the attachment is on |
-| `transit_gateway_route_table_id` | TGW route table ID or its ARN, required when the attachment is on |
+| `transit_gateway_route_tables` | One object per TGW route table: `id`, `associate`, `propagate`, `cidrs`. Required (at least one entry) when the attachment is on |
 | `use_static_tgw_ids` | Skip the data source reads and use the values as given |
 | `tgw_region` | TGW region when it differs from `aws_region` (reads only; an attachment cannot cross regions) |
 | `transit_gateway_subnets` | Subnets the attachment uses, defaults to the private tier |
 | `tgw_dns_support` | DNS resolution through the attachment, on by default |
 | `replace_existing_association` | Drops the auto-association the TGW makes for a new attachment |
-| `enable_tgw_association` / `enable_tgw_propagation` | On by default; propagation is usually the TGW owner's decision |
+| `enable_tgw_association` / `enable_tgw_propagation` | On by default; they are the defaults for an entry that does not set its own `associate` / `propagate`, and propagation is usually the TGW owner's decision |
 | `default_route_to_tgw` | `0.0.0.0/0` on each private route table |
+
+### More than one route table
+
+`transit_gateway_route_tables` is a list, so two tables is two entries. The usual shape is one
+table that accepts propagation from this attachment and one that does not:
+
+```hcl
+transit_gateway_route_tables = [
+  { id = "tgw-rt-0123456789abcdef0", associate = true, propagate = true },
+  { id = "tgw-rt-0fdecba9876543210", associate = true, propagate = false, cidrs = ["10.2.0.0/16"] },
+]
+```
+
+- One association per entry that associates, one propagation per entry that propagates, and one
+  static route per entry destination. Every key comes from the entries, so all of it is planned
+  from variables rather than from created resources.
+- `cidrs` are written as `aws_ec2_transit_gateway_route` on that table, one resource per table
+  and destination. The resource has no `tags` argument, so nothing there is tagged.
+- `associate`, `propagate` and `cidrs` fall back to the module-wide flags when an entry does not
+  set them, and `cidrs` default to `vpc_cidr` for a table that is not propagated, so a
+  propagation-free entry still gets the route back to this VPC. An entry that propagates gets no
+  static routes unless `cidrs` names them, because propagation would already have written
+  `vpc_cidr` there.
+- A static route only forwards when the attachment is associated with the same table, so the
+  second entry above still needs `associate = true`.
+- Keys are the ID or ARN as it was given, which is what the outputs use, so the same table cannot
+  appear twice and the CIDRs inside one entry have to be distinct.
+
+`replace_existing_association` only has anything to replace on the table the TGW auto-associates
+the new attachment with; on the other entries the flag does nothing.
+
+A table that is neither associated, propagated, nor given a CIDR is not touched, so its entry does
+nothing, and the data source read for it is skipped.
 
 The data sources read with the credentials Terraform is using, so a route table owned by
 another account is never found: `DescribeTransitGatewayRouteTables` does not return tables
@@ -100,7 +134,7 @@ Error: No matching EC2 Transit Gateway Route Table found.
 and `use_static_tgw_ids = true` is how you avoid it. IDs or ARNs both work, since an ARN is
 reduced to the ID the resources take.
 
-Two things this example checks rather than leaves to AWS:
+Three things this example checks rather than leaves to AWS:
 
 - `default_route_to_tgw` and `enable_nat_gateway` cannot both be on. They would write the same
   `0.0.0.0/0` route onto the same private route tables, so pick one as the default path out.
@@ -108,6 +142,9 @@ Two things this example checks rather than leaves to AWS:
   wins over the TGW default route.
 - The attachment needs two subnets in different AZs for resilience, so a private tier with one
   subnet has to be replaced with `transit_gateway_subnets`.
+- A static route for `vpc_cidr` on a table that also propagates this attachment is the same
+  destination twice, which AWS reports as `RouteAlreadyExists` at apply. Either drop the CIDR from
+  that entry or set `propagate = false` and let the static route be the one that writes it.
 
 The route count follows the module's private route tables: one with `single_nat_gateway`, one per
 AZ with `one_nat_gateway_per_az`, one per subnet position otherwise. That count also decides how
@@ -233,10 +270,14 @@ subnet is reported before anything is created.
   reach it through the VPC's local route.
 - Interface endpoints cannot be created in subnets shared with you, only used from them.
 - With the attachment on, the TGW route table still needs a route back to `10.2.0.0/16`,
-  otherwise traffic leaves the VPC and never comes back. If the network team owns that route,
-  set `enable_tgw_propagation = false` and ask for a static route.
+  otherwise traffic leaves the VPC and never comes back. Propagation writes it, and an entry with
+  `propagate = false` writes it by hand for `vpc_cidr`. If the network team owns that route, give
+  the entry `cidrs = []` so nothing is written here and ask for the route instead.
 - The share has to be accepted in this account before the association works, automatically
   inside an AWS Organization and otherwise in the RAM console. Terraform cannot create it.
+- The association and the propagation are keyed by the route table entry as it was given, so an
+  existing state has them at index `[0]` and Terraform plans to replace them. Move it instead:
+  `terraform state mv 'aws_ec2_transit_gateway_route_table_association.this[0]' 'aws_ec2_transit_gateway_route_table_association.this["tgw-rt-0123456789abcdef0"]'`.
 - ECR pull-through cache rules need a NAT gateway for the first pull, so an isolated VPC with
   no public subnet cannot use them.
 - Windows images with foreign layers are fetched from Microsoft unless the image was pushed

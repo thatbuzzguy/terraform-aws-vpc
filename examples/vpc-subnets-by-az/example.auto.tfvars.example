@@ -65,10 +65,17 @@ flow_log_retention_in_days       = 90
 
 # Optional transit gateway attachment, off by default. Turning it on makes the TGW the default
 # path out of the private VLANs, so `enable_nat_gateway` has to be off while
-# `default_route_to_tgw` is on.
+# `default_route_to_tgw` is on. One entry per route table: the first is associated and propagates
+# this VPC's CIDR, the second is associated and written by hand because it does not accept
+# propagation, and its route for 10.2.0.0/16 is what sends traffic back to the VPC.
+# associate, propagate and cidrs come from the flags below when an entry does not set them, and
+# cidrs default to vpc_cidr for a table that is not propagated.
 # enable_transit_gateway = true
 # transit_gateway_id = "tgw-0123456789abcdef0"
-# transit_gateway_route_table_id = "tgw-rt-0123456789abcdef0"
+# transit_gateway_route_tables = [
+#   { id = "tgw-rt-0123456789abcdef0", associate = true, propagate = true },
+#   { id = "tgw-rt-0fdecba9876543210", associate = true, propagate = false, cidrs = ["10.2.0.0/16"] },
+# ]
 # use_static_tgw_ids = true     # required for a TGW shared from another account
 # tgw_region = "us-west-2"
 # transit_gateway_subnets = null   # defaults to the private tier
